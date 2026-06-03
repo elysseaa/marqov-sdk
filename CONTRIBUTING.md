@@ -10,7 +10,7 @@ git clone https://github.com/marqov-dev/marqov-sdk
 cd marqov-sdk
 python3.12 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -e ".[dev,qiskit]"
+pip install -e ".[all,dev]"
 pytest tests/ -v
 ```
 

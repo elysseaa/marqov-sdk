@@ -61,7 +61,7 @@ For local development:
 ```bash
 git clone https://github.com/marqov-dev/marqov-sdk
 cd marqov-sdk
-pip install -e ".[dev,qiskit]"
+pip install -e ".[all,dev]"
 pytest tests/ -v
 ```
 
