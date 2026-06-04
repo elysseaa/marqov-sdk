@@ -24,10 +24,6 @@ Example:
 For native Temporal access, you can also use the underlying
 workflow and activity classes directly:
     >>> from marqov.workflows import JobWorkflow, create_worker
-
-Note:
-    `electron` and `lattice` are deprecated aliases for `task` and `workflow`.
-    `LatticeWorkflow` is a deprecated alias for `JobWorkflow`.
 """
 
 from dataclasses import dataclass
@@ -36,14 +32,10 @@ from marqov.workflows.decorators import (
     task,
     workflow,
     WorkflowDispatch,
-    # Deprecated aliases
-    electron,
-    lattice,
-    LatticeDispatch,
 )
-from marqov.workflows.graph import TransportGraph, TaskProxy, ElectronProxy
+from marqov.workflows.graph import TransportGraph, TaskProxy
 from marqov.workflows.temporal_workflow import JobWorkflow
-from marqov.workflows.runner import create_worker, LatticeWorkflow, execute_electron
+from marqov.workflows.runner import create_worker
 from marqov.workflows.activity import execute_task, prepare_node_inputs
 
 
@@ -70,25 +62,14 @@ class TemporalConfig:
 
 
 __all__ = [
-    # Primary decorators (new names)
     "task",
     "workflow",
-    # Dispatch
     "WorkflowDispatch",
-    # Graph
     "TransportGraph",
     "TaskProxy",
-    # Temporal
     "JobWorkflow",
     "create_worker",
     "execute_task",
     "prepare_node_inputs",
     "TemporalConfig",
-    # Deprecated aliases (will be removed in v0.3.0)
-    "electron",
-    "lattice",
-    "LatticeDispatch",
-    "ElectronProxy",
-    "LatticeWorkflow",
-    "execute_electron",
 ]

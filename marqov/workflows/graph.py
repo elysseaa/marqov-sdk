@@ -244,13 +244,13 @@ class TransportGraph:
         graph = cls()
 
         for nid, ndata in data["nodes"].items():
-            config = ElectronConfig(
+            config = TaskConfig(
                 name=ndata["config"]["name"],
                 executor=ndata["config"]["executor"],
                 retries=ndata["config"]["retries"],
                 timeout_seconds=ndata["config"]["timeout_seconds"],
             )
-            node = ElectronNode(
+            node = TaskNode(
                 id=ndata["id"],
                 func_name=ndata["func_name"],
                 func_ref=ndata["func_ref"],
@@ -272,7 +272,7 @@ class TransportGraph:
         Returns:
             DOT format string for graphviz.
         """
-        lines = ["digraph lattice {", "  rankdir=TB;"]
+        lines = ["digraph workflow {", "  rankdir=TB;"]
 
         for nid, node in self.nodes.items():
             label = node.func_name
@@ -335,8 +335,3 @@ def extract_dependencies(args: tuple[Any, ...], kwargs: dict[str, Any]) -> list[
 
     return deps
 
-
-# Backward compatibility aliases
-ElectronConfig = TaskConfig
-ElectronNode = TaskNode
-ElectronProxy = TaskProxy

@@ -33,8 +33,6 @@ from typing import Any, Callable, TypeVar, overload
 
 import cloudpickle
 
-import warnings
-
 from marqov.workflows.graph import (
     TaskConfig,
     TaskNode,
@@ -476,53 +474,3 @@ def workflow(
         return decorator(func)
     return decorator
 
-
-# =============================================================================
-# Deprecated aliases for backwards compatibility
-# =============================================================================
-
-def electron(
-    func: F | None = None,
-    *,
-    name: str | None = None,
-    executor: str = "local",
-    retries: int = 0,
-    timeout: float = 300.0,
-) -> F | Callable[[F], F]:
-    """Deprecated alias for @task. Use @task instead.
-
-    .. deprecated::
-        `electron` is deprecated and will be removed in v0.3.0.
-        Use `task` instead.
-    """
-    warnings.warn(
-        "@electron is deprecated, use @task instead. "
-        "@electron will be removed in v0.3.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return task(func, name=name, executor=executor, retries=retries, timeout=timeout)
-
-
-def lattice(
-    func: F | None = None,
-    *,
-    name: str | None = None,
-) -> Callable[..., WorkflowDispatch] | Callable[[F], Callable[..., WorkflowDispatch]]:
-    """Deprecated alias for @workflow. Use @workflow instead.
-
-    .. deprecated::
-        `lattice` is deprecated and will be removed in v0.3.0.
-        Use `workflow` instead.
-    """
-    warnings.warn(
-        "@lattice is deprecated, use @workflow instead. "
-        "@lattice will be removed in v0.3.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return workflow(func, name=name)
-
-
-# Backwards compatibility alias
-LatticeDispatch = WorkflowDispatch

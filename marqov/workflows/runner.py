@@ -65,17 +65,9 @@ def create_worker(
     )
 
 
-# Backward compatibility aliases
-LatticeWorkflow = JobWorkflow
-execute_electron = execute_task
-
-# Re-export for backwards compatibility
 __all__ = [
     "JobWorkflow",
     "create_worker",
     "execute_task",
     "prepare_node_inputs",
-    # Backward compatibility
-    "LatticeWorkflow",
-    "execute_electron",
 ]

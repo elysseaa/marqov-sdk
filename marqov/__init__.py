@@ -31,10 +31,6 @@ Simple circuit execution:
     >>> circuit = Circuit().h(0).cnot(0, 1)
     >>> executor = LocalExecutor()
     >>> result = await executor.execute(circuit, shots=1000)
-
-Note:
-    `electron` and `lattice` are deprecated aliases for `task` and `workflow`.
-    They will be removed in v0.3.0.
 """
 
 __version__ = "0.2.0-dev"
@@ -48,32 +44,20 @@ from marqov.workflows import (
     workflow,
     TemporalConfig,
     create_worker,
-    # Deprecated aliases
-    electron,
-    lattice,
 )
 
 __all__ = [
-    # Version
     "__version__",
-    # Primary decorators (new names)
     "task",
     "workflow",
-    # Circuits
     "Circuit",
     "bell_state",
     "ghz_state",
-    # Device
     "MarqovDevice",
     "get_device",
-    # Executors
     "BaseExecutor",
     "ExecutionResult",
     "LocalExecutor",
-    # Workflows
     "TemporalConfig",
     "create_worker",
-    # Deprecated aliases (will be removed in v0.3.0)
-    "electron",
-    "lattice",
 ]

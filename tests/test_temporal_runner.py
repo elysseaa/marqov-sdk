@@ -14,8 +14,6 @@ from marqov.workflows.runner import (
     JobWorkflow,
     execute_task,
     prepare_node_inputs,
-    LatticeWorkflow,
-    execute_electron,
 )
 
 
@@ -86,18 +84,6 @@ class TestCreateWorker:
             assert result is mock_worker
 
 
-class TestBackwardCompatibility:
-    """Tests for backward compatibility aliases."""
-
-    def test_lattice_workflow_alias(self) -> None:
-        """LatticeWorkflow is alias for JobWorkflow."""
-        assert LatticeWorkflow is JobWorkflow
-
-    def test_execute_electron_alias(self) -> None:
-        """execute_electron is alias for execute_task."""
-        assert execute_electron is execute_task
-
-
 class TestModuleExports:
     """Tests for module __all__ exports."""
 
@@ -120,12 +106,6 @@ class TestModuleExports:
         """prepare_node_inputs is exported."""
         from marqov.workflows import runner
         assert hasattr(runner, "prepare_node_inputs")
-
-    def test_backward_compat_aliases_exported(self) -> None:
-        """Backward compatibility aliases are exported."""
-        from marqov.workflows import runner
-        assert hasattr(runner, "LatticeWorkflow")
-        assert hasattr(runner, "execute_electron")
 
 
 class TestWorkerConfiguration:
