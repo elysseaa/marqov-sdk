@@ -231,41 +231,6 @@ class TransportGraph:
             "output_nodes": self.output_nodes,
         }
 
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> TransportGraph:
-        """Deserialize graph from dictionary.
-
-        Args:
-            data: Dictionary from to_dict().
-
-        Returns:
-            Reconstructed TransportGraph instance.
-        """
-        graph = cls()
-
-        for nid, ndata in data["nodes"].items():
-            config = TaskConfig(
-                name=ndata["config"]["name"],
-                executor=ndata["config"]["executor"],
-                retries=ndata["config"]["retries"],
-                timeout_seconds=ndata["config"]["timeout_seconds"],
-            )
-            node = TaskNode(
-                id=ndata["id"],
-                func_name=ndata["func_name"],
-                func_ref=ndata["func_ref"],
-                args=ndata["args"],
-                kwargs=ndata["kwargs"],
-                config=config,
-                dependencies=ndata["dependencies"],
-            )
-            graph.nodes[nid] = node
-
-        graph.edges = [(e[0], e[1]) for e in data["edges"]]
-        graph.output_nodes = data["output_nodes"]
-
-        return graph
-
     def to_dot(self) -> str:
         """Generate DOT format for visualization.
 
