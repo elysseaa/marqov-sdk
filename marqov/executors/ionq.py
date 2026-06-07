@@ -106,25 +106,37 @@ class IonQExecutor(BaseExecutor):
 
         Args:
             config: Executor configuration including target and credentials.
-            session: Optional pre-built HTTP session (``requests.Session`` or a test
-                double exposing ``request(method, url, **kwargs)``). If None, a
-                ``requests.Session`` is created lazily.
+            session: Optional HTTP session/transport exposing
+                ``request(method, url, **kwargs)`` (e.g. ``requests.Session`` or a
+                test double). If None, each request uses a fresh ``requests`` call,
+                which keeps the executor safe to share across concurrent coroutines
+                (``requests.Session`` is not guaranteed thread-safe).
         """
         self.config = config
         self._session = session
         self._current_job_id: str | None = None
 
-    def _get_session_sync(self) -> Any:
-        """Get or lazily create the HTTP session (synchronous).
+    def _do_request(self, method: str, url: str, **kwargs: Any) -> Any:
+        """Perform a single synchronous HTTP request.
+
+        Uses the injected session if provided, otherwise a fresh ``requests`` call
+        per invocation. Avoiding a shared, cached session means concurrent calls
+        (each run in a worker thread via ``run_in_executor``) don't race on a single
+        non-thread-safe ``requests.Session``.
+
+        Args:
+            method: HTTP method.
+            url: Fully-qualified request URL.
+            **kwargs: Extra arguments forwarded to the transport.
 
         Returns:
-            An HTTP session exposing a ``request(method, url, **kwargs)`` method.
+            The HTTP response object.
         """
-        if self._session is None:
-            import requests
+        if self._session is not None:
+            return self._session.request(method, url, **kwargs)
+        import requests
 
-            self._session = requests.Session()
-        return self._session
+        return requests.request(method, url, **kwargs)
 
     def _auth_headers(self) -> dict[str, str]:
         """Build IonQ authorization headers.
@@ -200,11 +212,6 @@ class IonQExecutor(BaseExecutor):
 
         IonQ returns a sparse histogram mapping big-endian state indices (as
         strings) to probabilities, where the leftmost bit corresponds to qubit 0.
-
-        Args:
-            histogram: Mapping of state index strings to probabilities.
-            shots: Number of shots, used to scale probabilities to counts.
-            num_qubits: Number of qubits, used to zero-pad bitstrings.
 
         Counts are allocated with the largest-remainder (Hamilton) method so the
         totals sum exactly to ``shots`` — naive per-bin rounding can drift above or
@@ -363,7 +370,6 @@ class IonQExecutor(BaseExecutor):
             The parsed JSON response body.
         """
         loop = asyncio.get_running_loop()
-        session = await loop.run_in_executor(None, self._get_session_sync)
         url = f"{self.config.base_url}{path}"
 
         # Merge any caller-provided headers with auth headers so they don't collide
@@ -371,7 +377,7 @@ class IonQExecutor(BaseExecutor):
         headers = {**kwargs.pop("headers", {}), **self._auth_headers()}
 
         def _call() -> dict[str, Any]:
-            response = session.request(
+            response = self._do_request(
                 method, url, headers=headers, timeout=_HTTP_TIMEOUT_SECONDS, **kwargs
             )
             response.raise_for_status()

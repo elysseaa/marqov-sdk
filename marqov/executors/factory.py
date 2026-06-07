@@ -262,14 +262,17 @@ class ExecutorFactory:
         Returns:
             Configured IonQExecutor instance.
         """
-        config = IonQExecutorConfig(
-            target=backend_config.get("target", backend_slug),
-            api_key=backend_config.get("api_key"),
-            base_url=backend_config.get("base_url", "https://api.ionq.co/v0.3"),
-            poll_interval_seconds=backend_config.get("poll_interval_seconds", 1.0),
-            timeout_seconds=backend_config.get("timeout_seconds"),
-            noise_model=backend_config.get("noise_model"),
-        )
+        # Only forward keys present in backend_config and rely on
+        # IonQExecutorConfig's own defaults otherwise, so factory and dataclass
+        # defaults can't drift apart. The target falls back to the backend slug.
+        config_kwargs: dict[str, Any] = {
+            "target": backend_config.get("target", backend_slug),
+        }
+        for key in ("api_key", "base_url", "poll_interval_seconds", "timeout_seconds", "noise_model"):
+            if key in backend_config:
+                config_kwargs[key] = backend_config[key]
+
+        config = IonQExecutorConfig(**config_kwargs)
 
         return IonQExecutor(config)
 
