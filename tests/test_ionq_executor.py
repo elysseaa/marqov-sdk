@@ -5,6 +5,7 @@ require IonQ credentials. A commented integration template at the bottom shows h
 to run against the real API via the IONQ_API_KEY environment variable.
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -350,6 +351,24 @@ class TestIonQExecutorExecute:
             await executor.execute(circuit, shots=10)
 
         assert captured["noise"] == {"model": "aria-1"}
+
+    @pytest.mark.asyncio
+    async def test_execute_times_out(self) -> None:
+        """A perpetually-running job raises TimeoutError when timeout_seconds is set."""
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            if method == "POST":
+                return {"id": "job-t", "status": "submitted"}
+            return {"status": "running"}  # never reaches a terminal state
+
+        config = IonQExecutorConfig(
+            api_key="k", poll_interval_seconds=0.0, timeout_seconds=0.05
+        )
+        executor = IonQExecutor(config, session=_make_session(router))
+        circuit = Circuit().h(0)
+        with _patch_qasm(num_qubits=1):
+            with pytest.raises(asyncio.TimeoutError):
+                await executor.execute(circuit, shots=10)
 
     @pytest.mark.asyncio
     async def test_execute_failed_job_raises(self) -> None:
