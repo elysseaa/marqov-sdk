@@ -22,6 +22,7 @@ from marqov.executors.azure import AzureQuantumExecutor, AzureQuantumExecutorCon
 from marqov.executors.base import BaseExecutor
 from marqov.executors.braket import BraketExecutor, BraketExecutorConfig
 from marqov.executors.ibm import IBMExecutor, IBMExecutorConfig
+from marqov.executors.ionq import IonQExecutor, IonQExecutorConfig
 from marqov.executors.local import LocalExecutor
 from marqov.simulation.config import SimulationConfig
 from marqov.simulation.executor import SimulationExecutor
@@ -42,7 +43,7 @@ class ExecutorFactory:
         - IBM Quantum: Heron r2, Eagle processors via Qiskit Runtime SamplerV2
         - Azure Quantum: Quantinuum, PASQAL, IonQ, Rigetti (Qiskit/Cirq support)
         - Local: QuantumFlow simulator (no cloud required)
-        - IonQ Direct API: Coming soon
+        - IonQ Direct: Native IonQ REST API (no AWS/Braket intermediary)
 
     Example:
         >>> from marqov.executors.factory import ExecutorFactory
@@ -105,12 +106,9 @@ class ExecutorFactory:
         if provider == "Azure Quantum":
             return cls._create_azure_executor(backend_slug, backend_config)
 
-        # IonQ Direct API (future)
+        # IonQ Direct API
         if provider == "IonQ Direct":
-            raise NotImplementedError(
-                f"IonQ Direct API support coming soon. "
-                f"See docs/MULTI_CLOUD_EXECUTOR_DESIGN.md for roadmap."
-            )
+            return cls._create_ionq_executor(backend_slug, backend_config)
 
         # C++ simulation backends (qpp, tnqvm, cudaq, aer)
         if provider == "Quantum Brilliance":
@@ -118,8 +116,8 @@ class ExecutorFactory:
 
         raise ValueError(
             f"Unsupported provider: {provider}. "
-            f"Supported providers: AWS Braket, IBM Quantum, Azure Quantum, Quantum Brilliance, Local. "
-            f"Coming soon: IonQ Direct."
+            f"Supported providers: AWS Braket, IBM Quantum, Azure Quantum, "
+            f"IonQ Direct, Quantum Brilliance, Local."
         )
 
     @classmethod
@@ -245,6 +243,37 @@ class ExecutorFactory:
         return IBMExecutor(config)
 
     @classmethod
+    def _create_ionq_executor(
+        cls,
+        backend_slug: str,
+        backend_config: dict[str, Any],
+    ) -> IonQExecutor:
+        """Create an IonQ Direct API executor from configuration.
+
+        The IonQ API key may be supplied via config or the IONQ_API_KEY
+        environment variable, so no field is strictly required here.
+
+        Args:
+            backend_slug: Backend slug used as the IonQ target if not given
+                (e.g. "simulator", "qpu.aria-1").
+            backend_config: Configuration with optional target, api_key,
+                base_url, noise_model, and polling options.
+
+        Returns:
+            Configured IonQExecutor instance.
+        """
+        config = IonQExecutorConfig(
+            target=backend_config.get("target", backend_slug),
+            api_key=backend_config.get("api_key"),
+            base_url=backend_config.get("base_url", "https://api.ionq.co/v0.3"),
+            poll_interval_seconds=backend_config.get("poll_interval_seconds", 1.0),
+            timeout_seconds=backend_config.get("timeout_seconds"),
+            noise_model=backend_config.get("noise_model"),
+        )
+
+        return IonQExecutor(config)
+
+    @classmethod
     def _create_simulation_executor(
         cls,
         backend_slug: str,
@@ -271,15 +300,15 @@ class ExecutorFactory:
 
         Example:
             >>> ExecutorFactory.get_supported_providers()
-            ['AWS Braket', 'IBM Quantum', 'Azure Quantum', 'Local']
+            ['AWS Braket', 'IBM Quantum', 'Azure Quantum', 'IonQ Direct', ...]
         """
         return [
             "AWS Braket",
             "IBM Quantum",
             "Azure Quantum",
+            "IonQ Direct",
             "Quantum Brilliance",
             "Local",
-            # "IonQ Direct",     # Coming soon
         ]
 
     @classmethod
