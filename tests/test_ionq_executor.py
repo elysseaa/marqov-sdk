@@ -99,6 +99,25 @@ class TestHistogramToCounts:
         counts = IonQExecutor._histogram_to_counts({"0": 0.333, "1": 0.667}, 9, 1)
         assert counts == {"0": 3, "1": 6}
 
+    def test_counts_sum_to_shots(self) -> None:
+        """Largest-remainder allocation keeps the total exactly equal to shots."""
+        # Three equal thirds would each round to 33 (sum 99) with naive rounding.
+        histogram = {"0": 1 / 3, "1": 1 / 3, "2": 1 / 3}
+        counts = IonQExecutor._histogram_to_counts(histogram, 100, 2)
+        assert sum(counts.values()) == 100
+        # The leftover shot goes to a single bin: counts are 34/33/33 in some order.
+        assert sorted(counts.values()) == [33, 33, 34]
+
+    def test_counts_sum_to_shots_many_states(self) -> None:
+        """Totals stay exact even when many bins each carry a fractional part."""
+        histogram = {str(i): 1 / 7 for i in range(7)}
+        counts = IonQExecutor._histogram_to_counts(histogram, 1000, 3)
+        assert sum(counts.values()) == 1000
+
+    def test_empty_histogram(self) -> None:
+        """An empty histogram yields no counts."""
+        assert IonQExecutor._histogram_to_counts({}, 100, 2) == {}
+
 
 class TestCircuitToQasm:
     """Tests for the to_qiskit() -> QASM conversion path."""
