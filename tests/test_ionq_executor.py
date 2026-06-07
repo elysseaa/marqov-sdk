@@ -119,6 +119,27 @@ class TestHistogramToCounts:
         assert IonQExecutor._histogram_to_counts({}, 100, 2) == {}
 
 
+class TestExtractHistogram:
+    """Tests for normalizing the results-endpoint response shape."""
+
+    def test_direct_mapping(self) -> None:
+        """A bare histogram mapping is returned as-is."""
+        assert IonQExecutor._extract_histogram({"0": 0.5, "1": 0.5}) == {"0": 0.5, "1": 0.5}
+
+    def test_histogram_wrapped(self) -> None:
+        """A {'histogram': {...}} shape is unwrapped."""
+        assert IonQExecutor._extract_histogram({"histogram": {"0": 1.0}}) == {"0": 1.0}
+
+    def test_data_histogram_wrapped(self) -> None:
+        """A {'data': {'histogram': {...}}} shape is unwrapped."""
+        payload = {"data": {"histogram": {"3": 1.0}}}
+        assert IonQExecutor._extract_histogram(payload) == {"3": 1.0}
+
+    def test_probabilities_key(self) -> None:
+        """A {'probabilities': {...}} shape is unwrapped."""
+        assert IonQExecutor._extract_histogram({"probabilities": {"2": 1.0}}) == {"2": 1.0}
+
+
 class TestCircuitToQasm:
     """Tests for the to_qiskit() -> QASM conversion path."""
 
@@ -210,6 +231,67 @@ class TestIonQExecutorExecute:
         assert captured["shots"] == 10
 
     @pytest.mark.asyncio
+    async def test_execute_uses_results_endpoint_when_no_inline_histogram(self) -> None:
+        """Falls back to /results and unwraps a wrapped histogram shape."""
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            if method == "POST":
+                return {"id": "job-9", "status": "submitted"}
+            if url.endswith("/jobs/job-9/results"):
+                # Wrapped shape — must be unwrapped, not passed through verbatim.
+                return {"data": {"histogram": {"0": 0.5, "3": 0.5}}}
+            return {"status": "completed"}  # job object has no inline histogram
+
+        executor = IonQExecutor(
+            IonQExecutorConfig(api_key="k"), session=_make_session(router)
+        )
+        circuit = bell_state()
+        with _patch_qasm(num_qubits=2):
+            result = await executor.execute(circuit, shots=1000)
+
+        assert result.counts == {"00": 500, "11": 500}
+
+    @pytest.mark.asyncio
+    async def test_execute_preserves_zero_execution_time(self) -> None:
+        """A reported execution_time of 0 is preserved, not treated as missing."""
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            if method == "POST":
+                return {"id": "job-0", "status": "submitted"}
+            return {
+                "status": "completed",
+                "data": {"histogram": {"0": 1.0}},
+                "execution_time": 0,
+            }
+
+        executor = IonQExecutor(
+            IonQExecutorConfig(api_key="k"), session=_make_session(router)
+        )
+        circuit = Circuit().h(0)
+        with _patch_qasm(num_qubits=1):
+            result = await executor.execute(circuit, shots=10)
+
+        assert result.execution_time_ms == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_falls_back_to_wall_time_when_unreported(self) -> None:
+        """When IonQ omits execution_time, wall time (a positive float) is used."""
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            if method == "POST":
+                return {"id": "job-w", "status": "submitted"}
+            return {"status": "completed", "data": {"histogram": {"0": 1.0}}}
+
+        executor = IonQExecutor(
+            IonQExecutorConfig(api_key="k"), session=_make_session(router)
+        )
+        circuit = Circuit().h(0)
+        with _patch_qasm(num_qubits=1):
+            result = await executor.execute(circuit, shots=10)
+
+        assert result.execution_time_ms > 0
+
+    @pytest.mark.asyncio
     async def test_execute_polls_until_complete(self) -> None:
         """Execute keeps polling while the job is still running."""
         calls = {"n": 0}
@@ -287,6 +369,27 @@ class TestIonQExecutorExecute:
                 await executor.execute(circuit, shots=10)
 
 
+class TestRequestHeaders:
+    """Tests for header handling in the internal request helper."""
+
+    @pytest.mark.asyncio
+    async def test_caller_headers_merged_with_auth(self) -> None:
+        """Caller-supplied headers merge with auth headers (no TypeError)."""
+        captured: dict = {}
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            captured.update(kwargs)
+            return {"ok": True}
+
+        executor = IonQExecutor(
+            IonQExecutorConfig(api_key="k"), session=_make_session(router)
+        )
+        await executor._request("GET", "/jobs", headers={"X-Custom": "1"})
+
+        assert captured["headers"]["Authorization"] == "apiKey k"
+        assert captured["headers"]["X-Custom"] == "1"
+
+
 class TestIonQExecutorCancel:
     """Tests for IonQExecutor.cancel."""
 
@@ -328,6 +431,19 @@ class TestIonQExecutorGetStatus:
         assert status.status == "online"
         assert status.queue_depth == 4
         assert status.queue_time_seconds == 120
+
+    @pytest.mark.asyncio
+    async def test_zero_queue_depth_preserved(self) -> None:
+        """A queue_depth of 0 (empty queue) is reported, not treated as missing."""
+
+        def router(method, url, **kwargs):  # noqa: ANN001, ANN202
+            return {"status": "available", "queue_depth": 0, "jobs_queued": 5}
+
+        executor = IonQExecutor(
+            IonQExecutorConfig(api_key="k"), session=_make_session(router)
+        )
+        status = await executor.get_status()
+        assert status.queue_depth == 0
 
     @pytest.mark.asyncio
     async def test_unavailable_maps_to_offline(self) -> None:

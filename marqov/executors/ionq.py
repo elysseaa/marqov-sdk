@@ -163,6 +163,34 @@ class IonQExecutor(BaseExecutor):
         return qasm, qiskit_circuit.num_qubits
 
     @staticmethod
+    def _extract_histogram(payload: dict[str, Any]) -> dict[str, float]:
+        """Extract the probability histogram from a results response.
+
+        The IonQ results endpoint may return the histogram directly
+        (``{"0": 0.5, ...}``) or wrapped (``{"histogram": {...}}`` or
+        ``{"data": {"histogram": {...}}}``, and sometimes under ``probabilities``).
+        This normalizes those shapes to the bare ``{state_index: probability}`` map.
+
+        Args:
+            payload: The parsed JSON results response.
+
+        Returns:
+            The probability histogram mapping.
+        """
+        data = payload.get("data")
+        if isinstance(data, dict) and isinstance(data.get("histogram"), dict):
+            nested: dict[str, float] = data["histogram"]
+            return nested
+        if isinstance(payload.get("histogram"), dict):
+            wrapped: dict[str, float] = payload["histogram"]
+            return wrapped
+        if isinstance(payload.get("probabilities"), dict):
+            probabilities: dict[str, float] = payload["probabilities"]
+            return probabilities
+        # Assume the payload is already a bare histogram mapping.
+        return payload
+
+    @staticmethod
     def _histogram_to_counts(
         histogram: dict[str, float],
         shots: int,
@@ -283,15 +311,19 @@ class IonQExecutor(BaseExecutor):
 
         histogram = job.get("data", {}).get("histogram")
         if histogram is None:
-            histogram = await self._request("GET", f"/jobs/{job_id}/results")
+            results = await self._request("GET", f"/jobs/{job_id}/results")
+            histogram = self._extract_histogram(results)
 
         counts = self._histogram_to_counts(histogram, shots, num_qubits)
 
-        execution_time_ms = job.get("execution_time")
+        # Prefer IonQ's reported execution time; fall back to measured wall time.
+        # Use an explicit None check so a valid 0 is preserved (not treated as missing).
+        reported_time = job.get("execution_time")
+        execution_time_ms = reported_time if reported_time is not None else wall_time * 1000
         return ExecutionResult(
             counts=counts,
             backend=self.config.target,
-            execution_time_ms=execution_time_ms if execution_time_ms else wall_time * 1000,
+            execution_time_ms=execution_time_ms,
             shots=shots,
             raw_result=job,
             metadata={
@@ -333,7 +365,10 @@ class IonQExecutor(BaseExecutor):
         loop = asyncio.get_running_loop()
         session = await loop.run_in_executor(None, self._get_session_sync)
         url = f"{self.config.base_url}{path}"
-        headers = self._auth_headers()
+
+        # Merge any caller-provided headers with auth headers so they don't collide
+        # with the explicit headers= argument below (auth takes precedence).
+        headers = {**kwargs.pop("headers", {}), **self._auth_headers()}
 
         def _call() -> dict[str, Any]:
             response = session.request(
@@ -371,7 +406,10 @@ class IonQExecutor(BaseExecutor):
             raw_status = str(backend.get("status", "")).lower()
             status = self._IONQ_STATUS_MAP.get(raw_status, "maintenance")
 
-            queue_depth = backend.get("queue_depth") or backend.get("jobs_queued")
+            # Explicit None check so a valid queue_depth of 0 is not discarded.
+            queue_depth = backend.get("queue_depth")
+            if queue_depth is None:
+                queue_depth = backend.get("jobs_queued")
             avg_queue = backend.get("average_queue_time")
             queue_time_seconds = int(avg_queue) if avg_queue is not None else None
 
