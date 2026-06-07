@@ -57,6 +57,25 @@ class _FailOnNthExecutor(BaseExecutor):
         )
 
 
+class _ClampedShotsExecutor(BaseExecutor):
+    """Executor that runs fewer shots than requested — like a shot-capped backend.
+
+    The table must report ``result.shots`` (what actually ran), not the requested
+    value, so a clamped run is never silently misreported.
+    """
+
+    def __init__(self, actual_shots: int) -> None:
+        self._actual_shots = actual_shots
+
+    async def execute(self, circuit: Circuit, shots: int = 1000, **kwargs: Any) -> ExecutionResult:
+        return ExecutionResult(
+            counts={"00": self._actual_shots},
+            backend="clamped",
+            execution_time_ms=1.0,
+            shots=self._actual_shots,
+        )
+
+
 # --------------------------------------------------------------------------- #
 # top_outcomes
 # --------------------------------------------------------------------------- #
@@ -208,6 +227,21 @@ async def test_run_suite_is_reproducible_with_seed() -> None:
     assert [r.top_3_outcomes for r in first] == [r.top_3_outcomes for r in second]
 
 
+@pytest.mark.asyncio
+async def test_run_suite_records_executor_shots_not_request() -> None:
+    """The shots column reflects what the backend actually ran, not what was asked.
+
+    Real hardware clamps shot counts, so the row must carry ``result.shots`` —
+    recording the requested value instead would silently misreport a capped run.
+    """
+    rows = await run_suite(
+        {"clamped": _ClampedShotsExecutor(actual_shots=64)},
+        shots=1000,
+        circuits={"bell": Circuit()},
+    )
+    assert [row.shots for row in rows] == [64]
+
+
 # --------------------------------------------------------------------------- #
 # run_suite — skip-and-log error handling (atomic per backend)
 # --------------------------------------------------------------------------- #
@@ -312,3 +346,21 @@ def test_cli_main_rejects_unknown_executor(capsys: pytest.CaptureFixture[str]) -
     exit_code = main(["--executor", "bogus"])
     assert exit_code == 2
     assert "Unsupported executor 'bogus'" in capsys.readouterr().err
+
+
+def test_cli_main_exits_1_when_all_backends_fail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """When every backend fails, the CLI exits non-zero so CI can flag a broken run.
+
+    The shipped CLI only builds the always-succeeding ``local`` executor, so the
+    all-fail path (``return 0 if rows else 1``) is driven here by substituting a
+    failing backend.
+    """
+    monkeypatch.setattr(
+        "benchmarks.suite.build_executors",
+        lambda names, seed: {"broken": _FailOnNthExecutor(fail_on_call=1)},
+    )
+    exit_code = main(["--executor", "broken", "--shots", "50"])
+    assert exit_code == 1
+    assert "skipping broken" in capsys.readouterr().err

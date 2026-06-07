@@ -216,6 +216,9 @@ def format_table(rows: Sequence[BenchmarkRow]) -> str:
 
 def _build_executor(name: str, seed: int) -> BaseExecutor:
     """Create a single executor for a CLI ``--executor`` name."""
+    # Only ``local`` is wired here. Richer backends need provider config (ARNs,
+    # tokens, S3 buckets) that a zero-arg CLI can't supply, so they go through
+    # run_suite() with a caller-built BaseExecutor rather than ExecutorFactory.
     if name == "local":
         return LocalExecutor(LocalExecutorConfig(seed=seed))
     raise ValueError(

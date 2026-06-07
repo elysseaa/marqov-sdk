@@ -176,6 +176,10 @@ The measurement outcomes above are reproducible for a fixed `--seed` (it seeds
 both the random circuit and the local sampler); `exec_time_ms` is wall time and
 will differ on your machine.
 
+**Scope.** The suite compares execution time and outcome distribution only.
+Shot-fidelity and queue-overhead metrics are out of scope for this harness;
+device-level queue status is available separately via `BaseExecutor.get_status()`.
+
 **Error handling.** If a backend errors on any circuit, the suite skips that
 *entire* backend (it emits no partial rows for it), logs the backend and the
 failing circuit to stderr, and continues with the next backend — it never
