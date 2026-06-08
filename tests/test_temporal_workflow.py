@@ -16,6 +16,11 @@ import pytest
 from marqov.workflows.temporal_workflow import JobWorkflow
 
 
+def _setup_workflow_mock(mock_workflow: MagicMock) -> None:
+    """Stub workflow.now() so task_timeline timestamps are JSON-serializable."""
+    mock_workflow.now.return_value.isoformat.return_value = "2026-01-01T00:00:00"
+
+
 class TestJobWorkflow:
     """Tests for JobWorkflow class."""
 
@@ -42,7 +47,6 @@ class TestJobWorkflow:
     @pytest.mark.asyncio
     async def test_single_node_execution(self) -> None:
         """Execute workflow with single node."""
-        # Setup
         nodes = {
             "node1": {
                 "node_id": "node1",
@@ -57,7 +61,6 @@ class TestJobWorkflow:
             output_nodes=["node1"],
         )
 
-        # Mock responses
         prepare_response = json.dumps({
             "node_id": "node1",
             "func_ref": "base64func",
@@ -70,6 +73,7 @@ class TestJobWorkflow:
         })
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(
                 side_effect=[prepare_response, execute_response]
             )
@@ -77,7 +81,7 @@ class TestJobWorkflow:
             workflow = JobWorkflow()
             result = await workflow.run(workflow_input)
 
-        assert json.loads(result) == 3
+        assert json.loads(result)["result"] == 3
 
     @pytest.mark.asyncio
     async def test_multiple_output_nodes(self) -> None:
@@ -92,7 +96,6 @@ class TestJobWorkflow:
             output_nodes=["a", "b"],
         )
 
-        # Both nodes execute in parallel
         prepare_responses = [
             json.dumps({"node_id": "a", "func_ref": "f1", "args": [], "kwargs": {}}),
             json.dumps({"node_id": "b", "func_ref": "f2", "args": [], "kwargs": {}}),
@@ -103,7 +106,7 @@ class TestJobWorkflow:
         ]
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
-            # Interleave: prepare_a, execute_a, prepare_b, execute_b
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(
                 side_effect=[
                     prepare_responses[0],
@@ -116,8 +119,7 @@ class TestJobWorkflow:
             workflow = JobWorkflow()
             result = await workflow.run(workflow_input)
 
-        result_data = json.loads(result)
-        assert result_data == {"a": 10, "b": 20}
+        assert json.loads(result)["result"] == {"a": 10, "b": 20}
 
     @pytest.mark.asyncio
     async def test_no_output_nodes_returns_all(self) -> None:
@@ -128,7 +130,7 @@ class TestJobWorkflow:
         workflow_input = self._create_workflow_input(
             nodes=nodes,
             execution_levels=[["x"]],
-            output_nodes=[],  # Empty output nodes
+            output_nodes=[],
         )
 
         prepare_response = json.dumps({
@@ -137,6 +139,7 @@ class TestJobWorkflow:
         execute_response = json.dumps({"node_id": "x", "result": "value"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(
                 side_effect=[prepare_response, execute_response]
             )
@@ -144,8 +147,7 @@ class TestJobWorkflow:
             workflow = JobWorkflow()
             result = await workflow.run(workflow_input)
 
-        result_data = json.loads(result)
-        assert result_data == {"x": "value"}
+        assert json.loads(result)["result"] == {"x": "value"}
 
     @pytest.mark.asyncio
     async def test_execution_levels_sequential(self) -> None:
@@ -172,18 +174,17 @@ class TestJobWorkflow:
                     "args": node_data["args"],
                     "kwargs": node_data["kwargs"],
                 })
-            else:  # execute_task
+            else:
                 node_id = kwargs["args"][0]
                 return json.dumps({"node_id": node_id, "result": f"{node_id}_result"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
             await workflow.run(workflow_input)
 
-        # Verify level 0 executes before level 1
-        # Order: prepare_level0, execute_level0, prepare_level1, execute_level1
         activity_sequence = [c[0] for c in call_order]
         assert activity_sequence == [
             "prepare_node_inputs",
@@ -223,14 +224,13 @@ class TestJobWorkflow:
                 return json.dumps({"node_id": node_id, "result": f"{node_id}_result"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
             await workflow.run(workflow_input)
 
-        # First call to prepare_node_inputs should have empty completed
         assert captured_completed[0] == {}
-        # Second call should have first's result
         assert captured_completed[1] == {"first": "first_result"}
 
     @pytest.mark.asyncio
@@ -242,7 +242,7 @@ class TestJobWorkflow:
                 "func_ref": "f",
                 "args": [],
                 "kwargs": {},
-                "retries": 3,  # Custom retries
+                "retries": 3,
             }
         }
         workflow_input = self._create_workflow_input(
@@ -267,14 +267,14 @@ class TestJobWorkflow:
                 return json.dumps({"node_id": "retry_task", "result": "done"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
             await workflow.run(workflow_input)
 
-        # Verify retry policy was set (retries + 1 = maximum_attempts)
         assert captured_retry_policy is not None
-        assert captured_retry_policy.maximum_attempts == 4  # 3 + 1
+        assert captured_retry_policy.maximum_attempts == 4  # retries + 1
 
     @pytest.mark.asyncio
     async def test_timeout_from_node_data(self) -> None:
@@ -285,7 +285,7 @@ class TestJobWorkflow:
                 "func_ref": "f",
                 "args": [],
                 "kwargs": {},
-                "timeout_seconds": 600,  # Custom timeout
+                "timeout_seconds": 600,
             }
         }
         workflow_input = self._create_workflow_input(
@@ -310,6 +310,7 @@ class TestJobWorkflow:
                 return json.dumps({"node_id": "slow_task", "result": "done"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
@@ -326,7 +327,6 @@ class TestJobWorkflow:
                 "func_ref": "f",
                 "args": [],
                 "kwargs": {},
-                # No timeout_seconds specified
             }
         }
         workflow_input = self._create_workflow_input(
@@ -351,6 +351,7 @@ class TestJobWorkflow:
                 return json.dumps({"node_id": "task", "result": "done"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
@@ -386,6 +387,7 @@ class TestJobWorkflow:
                 return json.dumps({"node_id": "task", "result": "done"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
@@ -419,7 +421,7 @@ class TestJobWorkflowParallelExecution:
         }
         workflow_input = self._create_workflow_input(
             nodes=nodes,
-            execution_levels=[["a", "b", "c"]],  # All in same level
+            execution_levels=[["a", "b", "c"]],
             output_nodes=["a", "b", "c"],
         )
 
@@ -440,16 +442,14 @@ class TestJobWorkflowParallelExecution:
                 return json.dumps({"node_id": node_id, "result": node_id})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
             result = await workflow.run(workflow_input)
 
-        # All three tasks should have been scheduled
         assert set(execution_tasks) == {"a", "b", "c"}
-
-        result_data = json.loads(result)
-        assert result_data == {"a": "a", "b": "b", "c": "c"}
+        assert json.loads(result)["result"] == {"a": "a", "b": "b", "c": "c"}
 
 
 class TestJobWorkflowActivityReferences:
@@ -494,11 +494,11 @@ class TestJobWorkflowActivityReferences:
                 return json.dumps({"node_id": "task", "result": "done"})
 
         with patch("marqov.workflows.temporal_workflow.workflow") as mock_workflow:
+            _setup_workflow_mock(mock_workflow)
             mock_workflow.execute_activity = AsyncMock(side_effect=mock_activity)
 
             workflow = JobWorkflow()
             await workflow.run(workflow_input)
 
-        # Both activities should be called by their string names
         assert "prepare_node_inputs" in activity_names_called
         assert "execute_task" in activity_names_called
