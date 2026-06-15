@@ -122,6 +122,7 @@ Import from other formats:
 circuit = Circuit.from_qiskit(qiskit_circuit)
 circuit = Circuit.from_cirq(cirq_circuit)
 circuit = Circuit.from_pennylane(tape)
+circuit = Circuit.from_pyquil(pyquil_program)  # requires pip install marqov[pyquil]
 ```
 
 ## Marqov Platform
