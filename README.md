@@ -99,6 +99,15 @@ executor = ExecutorFactory.create_executor("qpu.aria-1", {
 result = await executor.execute(circuit, shots=1000)
 ```
 
+Or run on Rigetti QPUs (or the local QVM, no cloud account needed) via Rigetti QCS:
+
+```python
+executor = ExecutorFactory.create_executor("2q-qvm", {
+    "provider": "Rigetti QCS",
+})
+result = await executor.execute(circuit, shots=1000)
+```
+
 ## Supported Backends
 
 | Backend | Status |
@@ -108,7 +117,7 @@ result = await executor.execute(circuit, shots=1000)
 | IBM Quantum | ✅ Available |
 | Azure Quantum | ✅ Available |
 | IonQ Direct | ✅ Available |
-| Rigetti QCS | [🔧 Open issue #2](https://github.com/marqov-dev/marqov-sdk/issues/2) |
+| Rigetti QCS | ✅ Available |
 | Quantinuum | [🔧 Open issue #6](https://github.com/marqov-dev/marqov-sdk/issues/6) |
 
 ## Circuit Interop
